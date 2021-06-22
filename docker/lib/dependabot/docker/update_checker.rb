@@ -226,9 +226,13 @@ module Dependabot
       def tags_from_registry
         @tags_from_registry ||=
           begin
-            client = docker_registry_client
+            if using_dockerhub?
+              docker_hub_tags.fetch("tags")
+            else
+              client = docker_registry_client
 
-            client.tags(docker_repo_name, auto_paginate: true).fetch("tags")
+              client.tags(docker_repo_name, auto_paginate: true).fetch("tags")
+            end
           rescue *transient_docker_errors
             attempt ||= 1
             attempt += 1
@@ -244,6 +248,34 @@ module Dependabot
         raise if using_dockerhub?
 
         raise PrivateSourceTimedOut, registry_hostname
+      end
+
+      def docker_hub_tags(url = nil, auto_paginate: true)
+        query_vars = "?page_size=500"
+        url ||= "https://#{registry_hostname}/v2/repositories/#{docker_repo_name}/tags#{query_vars}"
+
+        response =
+          Excon.get(
+            url,
+            idempotent: true,
+            **SharedHelpers.excon_defaults
+          )
+
+        res = JSON.parse(response.body)
+        tags = res.fetch("results").map { |r| r["name"] }
+        res["tags"] = tags
+        return res unless auto_paginate
+
+        while (next_url = res.delete("next"))
+          additional_tags = docker_hub_tags(next_url, auto_paginate: false)
+          res["next"] = additional_tags["next"]
+          res["tags"] += additional_tags["tags"]
+          res["tags"] = res["tags"].uniq
+        end
+
+        res
+      rescue Excon::Error::Socket, Excon::Error::Timeout
+        []
       end
 
       def latest_digest
