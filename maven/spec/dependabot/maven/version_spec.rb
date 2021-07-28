@@ -217,6 +217,18 @@ RSpec.describe Dependabot::Maven::Version do
           it { is_expected.to eq(-1) }
         end
 
+        context "Milestone releases" do
+          let(:version) { described_class.new("2.0.0-M5") }
+          let(:other_version) { described_class.new("2.0.0-M11") }
+          it { is_expected.to eq(-1) }
+        end
+
+        context "Milestone releases with non-milestone releases" do
+          let(:version) { described_class.new("2.0.0-M5") }
+          let(:other_version) { described_class.new("2.0.0") }
+          it { is_expected.to eq(-1) }
+        end
+
         context "prefixes" do
           let(:version) { described_class.new("1.foo") }
           let(:other_version) { described_class.new("1-foo") }
